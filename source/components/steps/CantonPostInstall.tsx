@@ -14,7 +14,7 @@ const CantonPostInstall: FC<PostInstallProps> = ({ projectName }) => (
     <Text color={'whiteBright'}>To start development on your project:</Text>
     <Box flexDirection={'column'}>
       <Text>
-        - Docker must be running (or start from the <Text color={'gray'}>dev-stack</Text> script
+        - Docker must be running (or start it from the <Text color={'gray'}>dev-stack</Text> script
         below).
       </Text>
       <Text>
@@ -22,7 +22,7 @@ const CantonPostInstall: FC<PostInstallProps> = ({ projectName }) => (
       </Text>
       <Text>
         - Run <Text color={'gray'}>./scripts/dev-stack.sh</Text>, with Docker running choose{' '}
-        <Text color={'gray'}>Stack Up</Text>.
+        <Text color={'gray'}>"Stack Up"</Text>.
       </Text>
     </Box>
     <Text

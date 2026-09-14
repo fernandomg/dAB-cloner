@@ -282,7 +282,7 @@ describe('nonInteractive — canton execution', () => {
     await runNonInteractive({ stack: 'canton', name: 'my_app' })
 
     const postInstall = getLastJsonOutput().postInstall as string[]
-    expect(postInstall.some((msg) => msg.includes('dev-stack.sh'))).toBe(true)
+    expect(postInstall.some((msg) => msg.includes('dev-stack.sh up'))).toBe(true)
     expect(postInstall.some((msg) => msg.includes('README.md'))).toBe(true)
   })
 })
