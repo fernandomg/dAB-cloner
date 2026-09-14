@@ -1,3 +1,4 @@
+import { Text } from 'ink'
 import { type FC, useCallback, useMemo, useState } from 'react'
 import { isValidName, projectDirectoryExists } from '../../utils/utils.js'
 import Ask from '../Ask.js'
@@ -83,7 +84,11 @@ const ProjectName: FC<Props> = ({ onSubmit, onCompletion }) => {
       errorMessage={errorMessage}
       onSubmit={handleSubmit}
       question={'Project name'}
-      tip={'Letters (a-z, A-Z), numbers (0-9), and underscores (_) are allowed.'}
+      tip={
+        <>
+          Letters, numbers, underscores and <Text bold>non-initial</Text> dashes are allowed.
+        </>
+      }
     />
   )
 }

@@ -1,11 +1,10 @@
 import {
   getFeatureEntries,
   getInstallationModes,
-  type Stack,
   stackDefinitions,
   stackNames,
-} from './constants/config.js'
-import type { InstallationType } from './types/types.js'
+} from './stacks/index.js'
+import type { InstallationType, Stack } from './types/types.js'
 
 type FeatureInfo = {
   description: string
@@ -74,6 +73,8 @@ export function getInfoOutput(stackFilter?: string): string {
           'Install the recommended set. Only for stacks that list it in their own "modes" — every other stack rejects it',
         custom: 'Choose features individually',
       },
+      notes:
+        'A stack whose "modes" list is empty has no optional features. Send neither --mode nor --features',
     },
     null,
     2,

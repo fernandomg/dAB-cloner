@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { getDefaultFeatureNames, getFeatureNames } from '../constants/config.js'
+import { getFeatureNames } from '../stacks/index.js'
 
 vi.mock('../operations/index.js', () => ({
   cloneRepo: vi.fn().mockResolvedValue(undefined),
@@ -25,7 +25,6 @@ const { cloneRepo, createEnvFile, createInitialCommit, installPackages, cleanupF
 const { projectDirectoryExists } = await import('../utils/utils.js')
 
 const evmFeatureNames = getFeatureNames('evm')
-const cantonFeatureNames = getFeatureNames('canton')
 
 function getLastJsonOutput(): Record<string, unknown> {
   const lastCall = mockLog.mock.calls.at(-1)
@@ -115,26 +114,6 @@ describe('nonInteractive — validation', () => {
     expect(output.error).toMatch(/Valid features:/)
   })
 
-  it('rejects evm feature names when stack=canton', async () => {
-    await expect(
-      runNonInteractive({ stack: 'canton', name: 'my_app', mode: 'custom', features: 'subgraph' }),
-    ).rejects.toThrow()
-    const output = getLastJsonOutput()
-    expect(output.error).toMatch(/Unknown features for stack 'canton': subgraph/)
-  })
-
-  it('accepts canton-only feature names when stack=canton', async () => {
-    await runNonInteractive({
-      stack: 'canton',
-      name: 'my_app',
-      mode: 'custom',
-      features: 'carpincho,llm',
-    })
-    const output = getLastJsonOutput()
-    expect(output.success).toBe(true)
-    expect(output.features).toEqual(['carpincho', 'llm'])
-  })
-
   it('rejects mix of valid and invalid features', async () => {
     await expect(
       runNonInteractive({ name: 'my_app', mode: 'custom', features: 'demo,banana' }),
@@ -193,11 +172,7 @@ describe('nonInteractive — evm full mode execution', () => {
     await runNonInteractive({ name: 'my_app', mode: 'full' })
 
     expect(cloneRepo).toHaveBeenCalledWith('evm', 'my_app')
-    expect(createEnvFile).toHaveBeenCalledWith(
-      'evm',
-      expect.stringContaining('my_app'),
-      evmFeatureNames,
-    )
+    expect(createEnvFile).toHaveBeenCalledWith('evm', expect.stringContaining('my_app'))
     expect(installPackages).toHaveBeenCalledWith(
       'evm',
       expect.stringContaining('my_app'),
@@ -248,20 +223,44 @@ describe('nonInteractive — canton execution', () => {
     process.exitCode = undefined
   })
 
-  it('canton full mode passes stack=canton to all operations and lists all canton features', async () => {
-    await runNonInteractive({ stack: 'canton', name: 'my_app', mode: 'full' })
+  it('needs only --name, and reports no features', async () => {
+    await runNonInteractive({ stack: 'canton', name: 'my_app' })
 
     expect(cloneRepo).toHaveBeenCalledWith('canton', 'my_app')
-    expect(installPackages).toHaveBeenCalledWith(
-      'canton',
-      expect.stringContaining('my_app'),
-      'full',
-      cantonFeatureNames,
-    )
 
     const output = getLastJsonOutput()
+    expect(output.success).toBe(true)
     expect(output.stack).toBe('canton')
-    expect(output.features).toEqual(cantonFeatureNames)
+    expect(output.mode).toBe('full')
+    expect(output.features).toEqual([])
+  })
+
+  it('rejects --mode, naming the reason', async () => {
+    await expect(
+      runNonInteractive({ stack: 'canton', name: 'my_app', mode: 'full' }),
+    ).rejects.toThrow()
+    const output = getLastJsonOutput()
+    expect(output.success).toBe(false)
+    expect(output.error).toBe(
+      'The canton stack has no optional features, so --mode is not accepted',
+    )
+  })
+
+  it('rejects --features, naming the reason', async () => {
+    await expect(
+      runNonInteractive({ stack: 'canton', name: 'my_app', features: 'llm' }),
+    ).rejects.toThrow()
+    const output = getLastJsonOutput()
+    expect(output.error).toBe(
+      'The canton stack has no optional features, so --features is not accepted',
+    )
+  })
+
+  it('still rejects an existing project directory', async () => {
+    vi.mocked(projectDirectoryExists).mockReturnValueOnce(true)
+    await expect(runNonInteractive({ stack: 'canton', name: 'my_app' })).rejects.toThrow()
+    const output = getLastJsonOutput()
+    expect(output.error).toMatch(/already exists/)
   })
 
   it('commits the finished canton scaffold, after the install wrote the lockfile', async () => {
@@ -273,61 +272,18 @@ describe('nonInteractive — canton execution', () => {
       callOrder.push('createInitialCommit')
     })
 
-    await runNonInteractive({ stack: 'canton', name: 'my_app', mode: 'full' })
+    await runNonInteractive({ stack: 'canton', name: 'my_app' })
 
     expect(callOrder).toEqual(['installPackages', 'createInitialCommit'])
     expect(createInitialCommit).toHaveBeenCalledWith(expect.stringContaining('my_app'))
   })
 
-  it('canton custom mode threads only selected features through', async () => {
-    await runNonInteractive({
-      stack: 'canton',
-      name: 'my_app',
-      mode: 'custom',
-      features: 'carpincho',
-    })
+  it('post-install points at dev-stack.sh and the README', async () => {
+    await runNonInteractive({ stack: 'canton', name: 'my_app' })
 
-    expect(installPackages).toHaveBeenCalledWith(
-      'canton',
-      expect.stringContaining('my_app'),
-      'custom',
-      ['carpincho'],
-    )
-
-    const output = getLastJsonOutput()
-    expect(output.features).toEqual(['carpincho'])
-    expect(output.stack).toBe('canton')
-  })
-
-  it('canton post-install always includes the canton:up run guidance', async () => {
-    await runNonInteractive({
-      stack: 'canton',
-      name: 'my_app',
-      mode: 'custom',
-      features: 'llm',
-    })
-
-    const output = getLastJsonOutput()
-    const postInstall = output.postInstall as string[]
-    expect(postInstall.some((msg) => msg.includes('canton:up'))).toBe(true)
-  })
-
-  it('canton post-install leads with the dev-stack.sh one-command bring-up before the manual canton:up fallback', async () => {
-    await runNonInteractive({
-      stack: 'canton',
-      name: 'my_app',
-      mode: 'custom',
-      features: 'llm',
-    })
-
-    const output = getLastJsonOutput()
-    const postInstall = output.postInstall as string[]
-    const devStackIndex = postInstall.findIndex((msg) => msg.includes('dev-stack.sh'))
-    const cantonUpIndex = postInstall.findIndex((msg) => msg.includes('canton:up'))
-
-    expect(devStackIndex).toBeGreaterThanOrEqual(0)
-    expect(cantonUpIndex).toBeGreaterThanOrEqual(0)
-    expect(devStackIndex).toBeLessThan(cantonUpIndex)
+    const postInstall = getLastJsonOutput().postInstall as string[]
+    expect(postInstall.some((msg) => msg.includes('dev-stack.sh up'))).toBe(true)
+    expect(postInstall.some((msg) => msg.includes('README.md'))).toBe(true)
   })
 })
 
@@ -335,28 +291,6 @@ describe('nonInteractive — default mode', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     process.exitCode = undefined
-  })
-
-  it('canton default mode keeps the default:true feature set', async () => {
-    await runNonInteractive({ stack: 'canton', name: 'my_app', mode: 'default' })
-
-    const expected = getDefaultFeatureNames('canton')
-    expect(installPackages).toHaveBeenCalledWith(
-      'canton',
-      expect.stringContaining('my_app'),
-      'default',
-      expected,
-    )
-    const output = getLastJsonOutput()
-    expect(output.success).toBe(true)
-    expect(output.mode).toBe('default')
-    expect(output.features).toEqual(expected)
-  })
-
-  it('default mode does not require --features', async () => {
-    await runNonInteractive({ stack: 'canton', name: 'my_app', mode: 'default' })
-    const output = getLastJsonOutput()
-    expect(output.success).toBe(true)
   })
 
   it('rejects --mode default for the evm stack', async () => {

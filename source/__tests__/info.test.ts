@@ -1,6 +1,11 @@
 import { describe, expect, it } from 'vitest'
-import { getInstallationModes, stackDefinitions, stackNames } from '../constants/config.js'
 import { getInfoOutput } from '../info.js'
+import {
+  getFeatureEntries,
+  getInstallationModes,
+  stackDefinitions,
+  stackNames,
+} from '../stacks/index.js'
 
 describe('getInfoOutput — no filter', () => {
   it('returns valid JSON', () => {
@@ -54,7 +59,7 @@ describe('getInfoOutput — no filter', () => {
     const output = JSON.parse(getInfoOutput())
 
     for (const stack of stackNames) {
-      for (const [name, def] of Object.entries(stackDefinitions[stack].features)) {
+      for (const [name, def] of getFeatureEntries(stack)) {
         const feature = output.stacks[stack].features[name]
         if (def.postInstall) {
           expect(feature.postInstall).toEqual(def.postInstall)
@@ -69,7 +74,7 @@ describe('getInfoOutput — no filter', () => {
     const output = JSON.parse(getInfoOutput())
 
     for (const stack of stackNames) {
-      for (const [name, def] of Object.entries(stackDefinitions[stack].features)) {
+      for (const [name, def] of getFeatureEntries(stack)) {
         const feature = output.stacks[stack].features[name]
         if (def.requires) {
           expect(feature.requires).toEqual(def.requires)
@@ -112,7 +117,13 @@ describe('getInfoOutput — no filter', () => {
     }
 
     expect(output.stacks.evm.modes).not.toContain('default')
-    expect(output.stacks.canton.modes).toContain('default')
+  })
+
+  it('reports canton as a stack with no features and no modes', () => {
+    const output = JSON.parse(getInfoOutput())
+
+    expect(output.stacks.canton.features).toEqual({})
+    expect(output.stacks.canton.modes).toEqual([])
   })
 })
 

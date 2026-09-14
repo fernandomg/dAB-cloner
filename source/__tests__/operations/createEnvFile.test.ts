@@ -39,39 +39,10 @@ describe('createEnvFile — canton', () => {
     vi.clearAllMocks()
   })
 
-  it('always copies canton-barebones/.env.example', async () => {
-    await createEnvFile('canton', '/project/my_app', ['carpincho', 'llm'])
+  it('copies the single root .env.example to .env', async () => {
+    await createEnvFile('canton', '/project/my_app')
 
-    expect(copyFile).toHaveBeenCalledWith(
-      '/project/my_app/canton-barebones/.env.example',
-      '/project/my_app/canton-barebones/.env',
-    )
-  })
-
-  it('always copies the dapp frontend env file (ungated)', async () => {
-    await createEnvFile('canton', '/project/my_app', [])
-
-    expect(copyFile).toHaveBeenCalledWith(
-      '/project/my_app/dapp/frontend/.env.local.example',
-      '/project/my_app/dapp/frontend/.env.local',
-    )
-  })
-
-  it('copies carpincho-wallet env file only when carpincho feature selected', async () => {
-    await createEnvFile('canton', '/project/my_app', ['carpincho'])
-
-    expect(copyFile).toHaveBeenCalledWith(
-      '/project/my_app/carpincho-wallet/.env.local.example',
-      '/project/my_app/carpincho-wallet/.env.local',
-    )
-  })
-
-  it('skips carpincho env file when carpincho not selected', async () => {
-    await createEnvFile('canton', '/project/my_app', ['llm'])
-
-    expect(copyFile).not.toHaveBeenCalledWith(
-      '/project/my_app/carpincho-wallet/.env.local.example',
-      expect.any(String),
-    )
+    expect(copyFile).toHaveBeenCalledTimes(1)
+    expect(copyFile).toHaveBeenCalledWith('/project/my_app/.env.example', '/project/my_app/.env')
   })
 })

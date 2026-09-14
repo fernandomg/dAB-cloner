@@ -1,13 +1,16 @@
 import { rm } from 'node:fs/promises'
 import { resolve } from 'node:path'
-import { getStackConfig, type Stack } from '../constants/config.js'
-import { getProjectFolder } from '../utils/utils.js'
+import process from 'node:process'
+import { getStackConfig } from '../stacks/index.js'
+import type { Stack } from '../types/types.js'
+import { getProjectFolder, meetsNodeVersion } from '../utils/utils.js'
 import { exec, execFile } from './exec.js'
 
 /**
  * Clones the stack's repository into `projectName`, then hands the user a fresh repository: the
- * template's `.git` goes and `git init` runs in its place. The `tag-latest` path is the one place
- * a shell is used, because picking the newest tag needs `$()` command substitution.
+ * template's `.git` goes and `git init` runs in its place. A stack is cloned at its newest tag
+ * unless `ref` names one, which today only `DAPPBOOSTER_<STACK>_REF` does. Picking the newest tag
+ * is the one place a shell is used, because it needs `$()` command substitution.
  */
 export async function cloneRepo(
   stack: Stack,
@@ -17,23 +20,29 @@ export async function cloneRepo(
   const config = getStackConfig(stack)
   const projectFolder = getProjectFolder(projectName)
 
-  if (config.refType === 'branch') {
-    const branch = config.ref
-    if (!branch) {
-      throw new Error(`Stack '${stack}' has refType 'branch' but no 'ref' configured`)
-    }
+  if (config.minNodeVersion && !meetsNodeVersion(config.minNodeVersion)) {
+    throw new Error(
+      `The ${config.label} stack needs Node ${config.minNodeVersion} or later. You are running ${process.versions.node}.`,
+    )
+  }
 
-    onProgress?.(`Cloning ${config.label} (branch ${branch}) in ${projectName}`)
-    await execFile('git', [
-      'clone',
-      '--depth',
-      '1',
-      '--branch',
-      branch,
-      '--single-branch',
-      config.repoUrl,
-      projectName,
-    ])
+  // The installer runs this a few steps later. Checking now saves a clone that cannot be used.
+  try {
+    await execFile(config.packageManager, ['--version'])
+  } catch {
+    throw new Error(
+      `${config.packageManager} was not found. Install it, then run the installer again.`,
+    )
+  }
+
+  if (config.ref) {
+    // Fetching the ref by name keeps the clone shallow. It works for a tag or a branch.
+    onProgress?.(`Cloning ${config.label} (${config.ref}) in ${projectName}`)
+    await execFile('git', ['clone', '--depth', '1', '--no-checkout', config.repoUrl, projectName])
+
+    onProgress?.(`Checking out ${config.ref}`)
+    await execFile('git', ['fetch', '--depth', '1', 'origin', config.ref], { cwd: projectFolder })
+    await execFile('git', ['checkout', 'FETCH_HEAD'], { cwd: projectFolder })
   } else {
     onProgress?.(`Cloning ${config.label} in ${projectName}`)
     await execFile('git', ['clone', '--depth', '1', '--no-checkout', config.repoUrl, projectName])
@@ -45,11 +54,6 @@ export async function cloneRepo(
     await exec('git checkout $(git describe --tags $(git rev-list --tags --max-count=1))', {
       cwd: projectFolder,
     })
-  }
-
-  for (const dir of config.removeAfterClone) {
-    onProgress?.(`Removing ${dir}`)
-    await rm(resolve(projectFolder, dir), { recursive: true, force: true })
   }
 
   onProgress?.('Removing .git folder')

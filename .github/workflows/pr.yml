@@ -47,16 +47,16 @@ jobs:
       - uses: ./.github/actions/setup
       - run: pnpm test
 
-  test-node-22:
-    name: 3 - test (node 22)
+  test-node-floor:
+    name: 3 - test (node 24.15.0)
     runs-on: ubuntu-latest
     if: ${{ github.event.action != 'edited' || github.event.changes.base != null }}
-    # engines.node says >=22, so the floor gets the same test run as .nvmrc does.
+    # engines.node says >=24.15.0, so the floor gets the same test run as .nvmrc does.
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: ./.github/actions/setup
         with:
-          node-version: 22
+          node-version: 24.15.0
       - run: pnpm test
       - run: pnpm build
 

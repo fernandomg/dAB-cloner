@@ -38,14 +38,15 @@ describe('createInitialCommit', () => {
     expect(commitCall?.[1]).toContain('--no-verify')
   })
 
-  it('commits as the installer, without signing', async () => {
+  it("commits with the user's own git identity, without signing", async () => {
     await createInitialCommit('/project/my_app')
 
     const commitArgs = vi
       .mocked(execFile)
       .mock.calls.find((call) => (call[1] as string[]).includes('commit'))?.[1] as string[]
 
-    expect(commitArgs).toContain('user.name=dAppBooster')
+    expect(commitArgs.join(' ')).not.toContain('user.name')
+    expect(commitArgs.join(' ')).not.toContain('user.email')
     expect(commitArgs).toContain('commit.gpgsign=false')
     expect(commitArgs).toContain('chore: initial commit')
   })

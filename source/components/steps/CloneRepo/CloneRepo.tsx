@@ -1,7 +1,7 @@
 import { type FC, useCallback } from 'react'
-import type { Stack } from '../../../constants/config.js'
 import { cloneRepo } from '../../../operations/index.js'
 import { beginInstall } from '../../../operations/installGuard.js'
+import type { Stack } from '../../../types/types.js'
 import { getProjectFolder } from '../../../utils/utils.js'
 import StepProgress from '../StepProgress.js'
 

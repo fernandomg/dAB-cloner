@@ -1,4 +1,5 @@
 import { Text } from 'ink'
+import Spinner from 'ink-spinner'
 import { type FC, useCallback, useEffect, useState } from 'react'
 import { abortInstall } from '../../operations/installGuard.js'
 import { deriveStepDisplay } from '../../utils/utils.js'
@@ -50,7 +51,10 @@ const StepProgress: FC<Props> = ({ title, errorLabel, run, onCompletion }) => {
       ))}
       {currentStep && (
         <Text>
-          <Text dimColor>{'○'}</Text> {currentStep} <Text dimColor>Working...</Text>
+          <Text color={'green'}>
+            <Spinner type={'dots'} />
+          </Text>{' '}
+          {currentStep}
         </Text>
       )}
       {failedStep && (

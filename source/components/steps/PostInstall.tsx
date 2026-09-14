@@ -1,184 +1,74 @@
-import figures from 'figures'
 import { Box, Text } from 'ink'
-import Link from 'ink-link'
-import type { FC } from 'react'
-import { type FeatureName, getStackConfig, type Stack } from '../../constants/config.js'
-import { isFeatureSelected } from '../../utils/utils.js'
+import { type FC, useEffect, useState } from 'react'
+import { getStackConfig } from '../../stacks/index.js'
+import type { PostInstallProps, Stack } from '../../types/types.js'
+import { getPostInstallMessages } from '../../utils/utils.js'
 import Divider from '../Divider.js'
 
-const SubgraphWarningMessage: FC = () => (
-  <Box
-    flexDirection={'column'}
-    rowGap={1}
-  >
-    <Box
-      alignItems={'center'}
-      borderColor={'yellow'}
-      borderStyle={'bold'}
-      flexDirection={'column'}
-      justifyContent={'center'}
-      padding={1}
-    >
-      <Text color={'yellow'}>
-        {figures.warning}
-        {figures.warning} <Text bold>WARNING:</Text> You <Text bold>MUST</Text> finish the
-        subgraph's configuration manually {figures.warning}
-        {figures.warning}
-      </Text>
-    </Box>
-    <Text color={'whiteBright'}>Follow these steps:</Text>
-    <Box flexDirection={'column'}>
-      <Text>
-        1- Provide your own API key for <Text color={'gray'}>PUBLIC_SUBGRAPHS_API_KEY</Text> in{' '}
-        <Text color={'gray'}>.env.local</Text> You can get one from{' '}
-        <Link url="https://thegraph.com/studio/apikeys">The Graph Studio</Link>
-      </Text>
-      <Text>
-        2- After the API key is correctly configured, run{' '}
-        <Text color={'gray'}>pnpm subgraph-codegen</Text> in your console from the project's folder
-      </Text>
-    </Box>
-    <Text>
-      More configuration info in the{' '}
-      <Link url={'https://docs.dappbooster.dev/introduction/getting-started'}>
-        dAppBooster getting-started guide
-      </Link>
-      .
-    </Text>
-    <Text
-      color={'yellow'}
-      bold
-    >
-      {figures.info} Only after you have followed the previous steps you may proceed.
-    </Text>
-  </Box>
-)
+type Props = PostInstallProps & { stack: Stack }
 
-const EvmPostInstallMessage: FC<{ projectName: string }> = ({ projectName }) => (
+/** The plain list of next steps, shown for a stack that brings no component of its own. */
+const DefaultMessage: FC<{ projectName: string; lines: string[] }> = ({ projectName, lines }) => (
   <Box
     flexDirection={'column'}
     rowGap={1}
     paddingBottom={2}
   >
-    <Text color={'whiteBright'}>To start development on your project:</Text>
+    <Text color={'whiteBright'}>Next steps:</Text>
     <Box flexDirection={'column'}>
       <Text>
-        1- Move into the project's folder with <Text color={'gray'}>cd {projectName}</Text>
+        - Move into the project's folder with <Text color={'gray'}>cd {projectName}</Text>
       </Text>
-      <Text>
-        2- Start the development server with <Text color={'gray'}>pnpm dev</Text>
-      </Text>
-    </Box>
-    <Text color={'whiteBright'}>More info:</Text>
-    <Box flexDirection={'column'}>
-      <Text>
-        - Check out <Text color={'gray'}>.env.local</Text> for more configurations.
-      </Text>
-      <Text>
-        - Read the <Link url="https://docs.dappbooster.dev">dAppBooster documentation</Link> to know
-        more.
-      </Text>
-      <Text>
-        - Report issues with this installer on{' '}
-        <Link url="https://github.com/BootNodeDev/dAppBoosterInstallScript/issues">
-          the installer issue tracker
-        </Link>
-      </Text>
+      {lines.map((line) => (
+        <Text key={line}>- {line}</Text>
+      ))}
     </Box>
   </Box>
 )
 
-const CantonPostInstallMessage: FC<{
-  projectName: string
-  features: FeatureName[]
-}> = ({ projectName, features }) => {
-  const carpinchoEnabled = isFeatureSelected('carpincho', features)
-
-  return (
-    <Box
-      flexDirection={'column'}
-      rowGap={1}
-      paddingBottom={2}
-    >
-      <Text color={'whiteBright'}>To start the Canton stack:</Text>
-      <Box flexDirection={'column'}>
-        <Text>
-          1- Move into the project's folder with <Text color={'gray'}>cd {projectName}</Text>
-        </Text>
-        <Text>
-          2- Configure canton-barebones: <Text color={'gray'}>canton-barebones/.env</Text> was
-          created from the example — review it.
-        </Text>
-        <Text>
-          3- Bring up the whole local stack with one command:{' '}
-          <Text color={'gray'}>./scripts/dev-stack.sh up</Text> (Docker must be running). Run{' '}
-          <Text color={'gray'}>./scripts/dev-stack.sh</Text> with no arguments for an interactive
-          menu.
-        </Text>
-      </Box>
-      {carpinchoEnabled && (
-        <Box
-          alignItems={'center'}
-          borderColor={'yellow'}
-          borderStyle={'bold'}
-          flexDirection={'column'}
-          justifyContent={'center'}
-          padding={1}
-        >
-          <Text color={'yellow'}>
-            {figures.info} <Text bold>Carpincho Wallet</Text>:{' '}
-            <Text color={'gray'}>./scripts/dev-stack.sh up</Text> also builds the extension and
-            copies it to <Text color={'gray'}>~/Desktop/dist-extension</Text> — load it via{' '}
-            <Text color={'gray'}>chrome://extensions</Text> (Developer mode, Load unpacked){' '}
-            {figures.info}
-          </Text>
-        </Box>
-      )}
-      <Box flexDirection={'column'}>
-        <Text color={'whiteBright'}>Prefer to run the pieces by hand?</Text>
-        <Text>
-          - Start the Canton stack with <Text color={'gray'}>npm run canton:up</Text>, then run the
-          dapp frontend with <Text color={'gray'}>npm run app:dev</Text>.
-        </Text>
-        {carpinchoEnabled && (
-          <Text>
-            - Build the Carpincho extension with{' '}
-            <Text color={'gray'}>npm run carpincho:build:extension</Text> and load{' '}
-            <Text color={'gray'}>carpincho-wallet/dist-extension</Text> as an unpacked browser
-            extension.
-          </Text>
-        )}
-      </Box>
-      <Text>See the Canton stack README inside the project for full instructions.</Text>
-    </Box>
-  )
-}
-
-interface Props {
-  stack: Stack
-  features: FeatureName[]
-  projectName: string
-}
-
+/**
+ * Closing screen. A stack can bring its own component for a richer message; without one, the same
+ * lines the non-interactive path reports are printed as they are. The stack's component is imported
+ * here rather than from the stack config, so the config stays free of terminal UI for `--info` and
+ * the non-interactive path.
+ */
 const PostInstall: FC<Props> = ({ stack, features, projectName }) => {
-  const stackLabel = getStackConfig(stack).label
+  const { postInstallComponent: loadStackMessage } = getStackConfig(stack)
+  const [StackMessage, setStackMessage] = useState<FC<PostInstallProps>>()
+
+  useEffect(() => {
+    if (!loadStackMessage) {
+      return
+    }
+
+    let active = true
+
+    loadStackMessage().then((module) => {
+      if (active) {
+        setStackMessage(() => module.default)
+      }
+    })
+
+    return () => {
+      active = false
+    }
+  }, [loadStackMessage])
 
   return (
     <>
-      <Divider title={`Post-install instructions — ${stackLabel}`} />
-      <Box
-        flexDirection={'column'}
-        rowGap={2}
-      >
-        {stack === 'evm' && isFeatureSelected('subgraph', features) && <SubgraphWarningMessage />}
-        {stack === 'evm' && <EvmPostInstallMessage projectName={projectName} />}
-        {stack === 'canton' && (
-          <CantonPostInstallMessage
-            projectName={projectName}
-            features={features}
-          />
-        )}
-      </Box>
+      <Divider title={'Post-install instructions'} />
+      {StackMessage && (
+        <StackMessage
+          projectName={projectName}
+          features={features}
+        />
+      )}
+      {!loadStackMessage && (
+        <DefaultMessage
+          projectName={projectName}
+          lines={getPostInstallMessages(stack, features)}
+        />
+      )}
     </>
   )
 }

@@ -1,11 +1,12 @@
 import figures from 'figures'
-import { Text } from 'ink'
+import { Box, Text } from 'ink'
 import SelectInput from 'ink-select-input'
 import { type FC, useState } from 'react'
+import type { PlanSummaryItem } from '../../types/types.js'
 import Divider from '../Divider.js'
 
 interface Props {
-  summary: string
+  summary: PlanSummaryItem[]
   onConfirm: () => void
   onCancel: () => void
 }
@@ -13,8 +14,8 @@ interface Props {
 type ConfirmItem = { label: string; value: 'yes' | 'no' }
 
 const confirmItems: Array<ConfirmItem> = [
-  { label: 'Yes, scaffold it', value: 'yes' },
-  { label: 'No, start over', value: 'no' },
+  { label: 'Yes.', value: 'yes' },
+  { label: 'No, start over.', value: 'no' },
 ]
 
 /**
@@ -36,7 +37,19 @@ const Confirmation: FC<Props> = ({ summary, onConfirm, onCancel }) => {
   return (
     <>
       <Divider title={'Review'} />
-      <Text>{summary}</Text>
+      <Box flexDirection={'column'}>
+        {summary.map(({ label, value }) => (
+          <Text key={label}>
+            {label}:{' '}
+            <Text
+              bold
+              color={'green'}
+            >
+              {value}
+            </Text>
+          </Text>
+        ))}
+      </Box>
       {confirmed ? (
         <Text>
           <Text color={'green'}>{figures.tick}</Text> Scaffolding…

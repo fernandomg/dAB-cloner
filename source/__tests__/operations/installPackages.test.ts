@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { getFeatureNames, stackDefinitions } from '../../constants/config.js'
+import { getFeatureNames, stackDefinitions } from '../../stacks/index.js'
 
 vi.mock('../../operations/exec.js', () => ({
   exec: vi.fn().mockResolvedValue(undefined),
@@ -18,7 +18,6 @@ function mockPackageJson(scripts: Record<string, string> = { postinstall: 'wagmi
 }
 
 const evmFeatures = stackDefinitions.evm.features
-const cantonFeatures = stackDefinitions.canton.features
 
 describe('installPackages — evm', () => {
   beforeEach(() => {
@@ -184,33 +183,23 @@ describe('installPackages — canton', () => {
     mockPackageJson({})
   })
 
-  it('uses npm install for canton full mode', async () => {
+  it('runs a single pnpm install: the stack has no packages to remove', async () => {
     await installPackages('canton', '/project/my_app', 'full')
 
-    expect(execFile).toHaveBeenCalledWith('npm', ['install'], { cwd: '/project/my_app' })
+    expect(execFile).toHaveBeenCalledTimes(1)
+    expect(execFile).toHaveBeenCalledWith('pnpm', ['install'], { cwd: '/project/my_app' })
   })
 
-  it('uses npm install for a canton selection that removes no packages', async () => {
-    await installPackages('canton', '/project/my_app', 'custom', getFeatureNames('canton'))
+  it('installs the same way whatever the mode, since nothing is optional', async () => {
+    await installPackages('canton', '/project/my_app', 'custom', [])
 
     expect(execFile).toHaveBeenCalledTimes(1)
-    expect(execFile).toHaveBeenCalledWith('npm', ['install'], { cwd: '/project/my_app' })
-  })
-
-  it('uninstalls the pre-commit packages when that feature is dropped', async () => {
-    await installPackages('canton', '/project/my_app', 'custom', ['carpincho', 'llm'])
-
-    expect(execFile).toHaveBeenCalledWith(
-      'npm',
-      ['uninstall', ...cantonFeatures.precommit.packages],
-      { cwd: '/project/my_app' },
-    )
+    expect(execFile).toHaveBeenCalledWith('pnpm', ['install'], { cwd: '/project/my_app' })
   })
 
   it('skips the postinstall script the canton template does not have', async () => {
-    await installPackages('canton', '/project/my_app', 'custom', ['carpincho', 'llm'])
+    await installPackages('canton', '/project/my_app', 'custom', [])
 
-    expect(execFile).toHaveBeenCalledTimes(1)
-    expect(execFile).not.toHaveBeenCalledWith('npm', ['run', 'postinstall'], expect.anything())
+    expect(execFile).not.toHaveBeenCalledWith('pnpm', ['run', 'postinstall'], expect.anything())
   })
 })

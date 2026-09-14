@@ -2,20 +2,15 @@ import figures from 'figures'
 import { Text } from 'ink'
 import SelectInput from 'ink-select-input'
 import { type FC, useState } from 'react'
-import { getInstallationModes, type Stack } from '../../constants/config.js'
-import type { InstallationSelectItem, InstallationType } from '../../types/types.js'
+import { getInstallationModes } from '../../stacks/index.js'
+import type { InstallationSelectItem, Stack } from '../../types/types.js'
+import { MODE_LABELS } from '../../utils/utils.js'
 import Divider from '../Divider.js'
 
 interface Props {
   stack: Stack
   onCompletion: () => void
   onSelect: (item: InstallationSelectItem) => void
-}
-
-const MODE_LABELS: Record<InstallationType, string> = {
-  default: 'Default (recommended)',
-  full: 'Full',
-  custom: 'Custom',
 }
 
 const InstallationMode: FC<Props> = ({ stack, onCompletion, onSelect }) => {

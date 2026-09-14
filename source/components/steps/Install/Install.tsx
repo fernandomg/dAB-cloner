@@ -1,8 +1,8 @@
 import { type FC, useCallback, useMemo } from 'react'
-import { type FeatureName, getStackConfig, type Stack } from '../../../constants/config.js'
 import { createEnvFile, createInitialCommit, installPackages } from '../../../operations/index.js'
 import { completeInstall } from '../../../operations/installGuard.js'
-import type { InstallationType } from '../../../types/types.js'
+import { getStackConfig } from '../../../stacks/index.js'
+import type { FeatureName, InstallationType, Stack } from '../../../types/types.js'
 import { getProjectFolder } from '../../../utils/utils.js'
 import StepProgress from '../StepProgress.js'
 
@@ -16,12 +16,11 @@ interface Props {
 
 const Install: FC<Props> = ({ stack, mode, features, projectName, onCompletion }) => {
   const projectFolder = useMemo(() => getProjectFolder(projectName), [projectName])
-  const title = `${mode[0]?.toUpperCase()}${mode.slice(1)} installation`
 
   const run = useCallback(
     async (onProgress: (step: string) => void) => {
       onProgress('Creating env files')
-      await createEnvFile(stack, projectFolder, features)
+      await createEnvFile(stack, projectFolder)
       await installPackages(stack, projectFolder, mode, features, onProgress)
 
       if (getStackConfig(stack).initialCommit) {
@@ -36,7 +35,7 @@ const Install: FC<Props> = ({ stack, mode, features, projectName, onCompletion }
 
   return (
     <StepProgress
-      title={title}
+      title={'Installation'}
       errorLabel={'Installation failed'}
       run={run}
       onCompletion={onCompletion}

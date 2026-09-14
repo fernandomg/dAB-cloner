@@ -1,7 +1,7 @@
 import { Text } from 'ink'
 import { type FC, useCallback, useEffect, useMemo, useState } from 'react'
-import { getFeatureEntries, type Stack } from '../../constants/config.js'
-import type { MultiSelectItem } from '../../types/types.js'
+import { getFeatureEntries } from '../../stacks/index.js'
+import type { MultiSelectItem, Stack } from '../../types/types.js'
 import { applyFeatureToggle, resolveModeFeatures } from '../../utils/utils.js'
 import MultiSelect from '../Multiselect/index.js'
 

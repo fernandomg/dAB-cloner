@@ -1,19 +1,9 @@
 import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
-import {
-  type FeatureName,
-  getStackConfig,
-  type PackageManager,
-  type Stack,
-} from '../constants/config.js'
-import type { InstallationType } from '../types/types.js'
+import { getStackConfig } from '../stacks/index.js'
+import type { FeatureName, InstallationType, Stack } from '../types/types.js'
 import { getPackagesToRemove } from '../utils/utils.js'
 import { execFile } from './exec.js'
-
-const removeCommand: Record<PackageManager, string> = {
-  pnpm: 'remove',
-  npm: 'uninstall',
-}
 
 /** Whether the scaffolded project defines the named script. */
 function hasScript(projectFolder: string, name: string): boolean {
@@ -46,9 +36,7 @@ export async function installPackages(
     return
   }
 
-  await execFile(packageManager, [removeCommand[packageManager], ...packagesToRemove], {
-    cwd: projectFolder,
-  })
+  await execFile(packageManager, ['remove', ...packagesToRemove], { cwd: projectFolder })
 
   if (hasScript(projectFolder, 'postinstall')) {
     onProgress?.('Executing post-install scripts')

@@ -2,21 +2,19 @@ import { existsSync } from 'node:fs'
 import { join } from 'node:path'
 import process from 'node:process'
 import {
-  type FeatureName,
   getDefaultFeatureNames,
   getFeatureEntries,
   getFeatureNames,
   getStackConfig,
-  type Stack,
-} from '../constants/config.js'
-import type { InstallationType } from '../types/types.js'
+} from '../stacks/index.js'
+import type { FeatureName, InstallationType, PlanSummaryItem, Stack } from '../types/types.js'
 
 export function getProjectFolder(projectName: string) {
   return join(process.cwd(), projectName)
 }
 
 export function isValidName(name: string) {
-  return /^[a-zA-Z0-9_]+$/.test(name)
+  return /^[a-zA-Z0-9_][a-zA-Z0-9_-]*$/.test(name)
 }
 
 export function isAnswerConfirmed(answer?: string, errorMessage?: string): boolean {
@@ -31,6 +29,22 @@ export function canShowStep(currentStep: number, stepToShow: number) {
 
 export function isFeatureSelected(feature: FeatureName, selectedFeatures: FeatureName[]): boolean {
   return selectedFeatures.includes(feature)
+}
+
+/** Whether the running Node is at least `required`, both written as dotted numbers. */
+export function meetsNodeVersion(required: string, current = process.versions.node): boolean {
+  const numbers = (version: string) => version.split('.').map((part) => Number.parseInt(part, 10))
+  const wanted = numbers(required)
+  const running = numbers(current)
+
+  for (const [index, want] of wanted.entries()) {
+    const have = running[index] ?? 0
+    if (have !== want) {
+      return have > want
+    }
+  }
+
+  return true
 }
 
 type FeatureToggleAction = 'select' | 'unselect'
@@ -106,26 +120,35 @@ export function applyFeatureToggle(
   )
 }
 
-/** One-line summary of the plan, shown on the confirmation step before any disk work begins. */
+/** How each mode is named on screen, in the selector and in the review that follows it. */
+export const MODE_LABELS: Record<InstallationType, string> = {
+  default: 'Default (recommended)',
+  full: 'Full',
+  custom: 'Custom',
+}
+
+/**
+ * The plan as one item per setting, shown on the confirmation step before any disk work begins.
+ * Only stacks that ask a question reach that step.
+ */
 export function describeInstallPlan(
   stack: Stack,
   projectName: string,
   mode: InstallationType,
   selectedFeatures: FeatureName[],
-): string {
-  const stackLabel = getStackConfig(stack).label
-  const head = `Stack: ${stackLabel} · Project: ${projectName}`
+): PlanSummaryItem[] {
+  const items: PlanSummaryItem[] = [
+    { label: 'Stack', value: getStackConfig(stack).label },
+    { label: 'Project', value: projectName },
+    { label: 'Mode', value: MODE_LABELS[mode] },
+  ]
 
-  if (mode === 'full') {
-    return `${head} · Mode: full (all features)`
-  }
-
-  if (mode === 'default') {
-    return `${head} · Mode: default (recommended)`
+  if (mode !== 'custom') {
+    return items
   }
 
   const features = selectedFeatures.length > 0 ? selectedFeatures.join(', ') : 'none'
-  return `${head} · Mode: custom · Features: ${features}`
+  return [...items, { label: 'Features', value: features }]
 }
 
 export function getPackagesToRemove(stack: Stack, selectedFeatures: FeatureName[]): string[] {

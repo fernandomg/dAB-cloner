@@ -1,6 +1,6 @@
 import { resolve } from 'node:path'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { type FeatureName, getFeatureEntries, getFeatureNames } from '../../constants/config.js'
+import { getFeatureNames, stackDefinitions } from '../../stacks/index.js'
 
 vi.mock('node:fs/promises', () => ({
   rm: vi.fn().mockResolvedValue(undefined),
@@ -14,17 +14,20 @@ vi.mock('../../operations/exec.js', () => ({
 
 /**
  * Directories in the two templates. Everything else the installer removes is a file, and only
- * removed directories drive script stripping and workspaces pruning.
+ * removed directories drive script stripping.
  */
 const TEMPLATE_DIRECTORIES = [
   '.claude',
   '.github',
   '.husky',
   '.install-files',
-  'carpincho-wallet',
   'docs',
   'src/subgraphs',
   'src/components/pageComponents/home',
+  'canton-connect',
+  'canton-dappbooster',
+  'canton-theme',
+  'kit',
 ]
 
 function isTemplateDirectory(target: string): boolean {
@@ -65,32 +68,6 @@ function getWrittenPackageJson(): Record<string, unknown> {
   return JSON.parse(lastCall[1] as string)
 }
 
-/** Reads the workspaces field in either form: `string[]` or `{ packages }`. */
-function getWorkspacePackages(pkg: Record<string, unknown>): string[] {
-  const workspaces = pkg.workspaces
-
-  if (Array.isArray(workspaces)) {
-    return workspaces as string[]
-  }
-
-  const packages = (workspaces as { packages?: unknown } | undefined)?.packages
-  return Array.isArray(packages) ? (packages as string[]) : []
-}
-
-/**
- * Directories removed for a selection, derived from the config so the assertion stays true when
- * the feature list changes instead of hardcoding carpincho-wallet.
- */
-function removedCantonDirs(selected: FeatureName[]): string[] {
-  return getFeatureEntries('canton')
-    .filter(([name, definition]) => !selected.includes(name) && (definition.paths?.length ?? 0) > 0)
-    .flatMap(([, definition]) => definition.paths ?? [])
-}
-
-function entryTargetsRemovedDir(entry: string, removedDirs: string[]): boolean {
-  return removedDirs.some((dir) => entry === dir || entry.startsWith(`${dir}/`))
-}
-
 const ALL_EVM_FEATURES = getFeatureNames('evm')
 
 const EVM_DEV_DEPS = {
@@ -120,56 +97,38 @@ function mockEvmPackageJson() {
   )
 }
 
-/**
- * Mirrors cn-dappbooster@main's root package.json. `carpincho-wallet` is a workspace, so
- * deselecting carpincho has to prune it.
- */
-const CANTON_WORKSPACES = [
-  'canton-connect-kit',
-  'carpincho-wallet',
-  'canton-barebones',
-  'canton-barebones/wallet-service',
-  'dapp/daml',
-  'dapp/e2e',
-  'dapp/frontend',
-]
-
+/** Mirrors the root package.json of the canton-dappbooster tag the installer clones. */
 const CANTON_SCRIPTS = {
-  'canton:up': 'npm --prefix canton-barebones run up',
-  'canton:down': 'npm --prefix canton-barebones run down',
-  'canton:health': 'npm --prefix canton-barebones run health',
-  'canton:token': 'npm --prefix canton-barebones run token',
-  'build-dar': 'bash scripts/build-dar.sh',
-  'deploy-dar': 'bash canton-barebones/scripts/deploy-dar.sh',
-  'wallet:dev': 'npm --prefix carpincho-wallet run dev',
-  'wallet-service:dev': 'npm --prefix canton-barebones/wallet-service run dev',
-  'wallet-service:health': 'curl -fsS http://localhost:3010/health',
-  'carpincho:build:extension': 'npm --prefix carpincho-wallet run build:extension',
-  'app:dev': 'npm --prefix dapp/frontend run dev -- --host localhost --port 3012 --strictPort',
-  lint: 'biome check',
-  'lint:fix': 'biome check --write',
-  format: 'biome format --write',
-  e2e: 'npm --prefix dapp/e2e test',
-  'e2e:headed': 'npm --prefix dapp/e2e run test:headed',
-  'e2e:ui': 'npm --prefix dapp/e2e run test:ui',
+  'app:dev': 'pnpm -C dapp/frontend run dev',
+  build: 'pnpm -r run --if-present build',
+  'check:anatomy': 'node kit/check-anatomy.mjs',
+  'check:versions': 'node kit/check-versions.mjs',
+  'docs:build': 'typedoc --options kit/typedoc.json',
+  'docs:check': 'typedoc --options kit/typedoc.json --emit none && node kit/docs-check.mjs',
+  knip: 'knip',
+  lint: 'biome check --error-on-warnings',
   prepare: 'husky',
+  release: "pnpm -r --filter './canton-*' publish --no-git-checks",
+  'release:dry': "pnpm -r --filter './canton-*' publish --dry-run --no-git-checks",
+  'release:version': 'node kit/release-version.mjs',
+  test: 'pnpm -r run --if-present test',
+  typecheck: 'pnpm -r run --if-present typecheck',
 }
 
 const CANTON_DEV_DEPS = {
+  '@biomejs/biome': '2.5.11',
+  '@mermaid-js/mermaid-cli': '^11.15.0',
   husky: '^9.1.7',
+  knip: '6.33.0',
   'lint-staged': '^17.0.4',
-  '@commitlint/cli': '^21.0.1',
-  '@commitlint/config-conventional': '^21.0.1',
+  postcss: '^8.5.26',
+  typedoc: '^0.28.20',
+  typescript: '^5.9.3',
 }
 
-/** Pass `{ packages }` to exercise the object form; defaults to the `string[]` form. */
-function mockCantonPackageJson(workspaces: unknown = CANTON_WORKSPACES) {
+function mockCantonPackageJson() {
   vi.mocked(readFileSync).mockReturnValue(
-    JSON.stringify({
-      workspaces,
-      scripts: CANTON_SCRIPTS,
-      devDependencies: CANTON_DEV_DEPS,
-    }),
+    JSON.stringify({ scripts: CANTON_SCRIPTS, devDependencies: CANTON_DEV_DEPS }),
   )
 }
 
@@ -199,7 +158,7 @@ describe('cleanupFiles — evm', () => {
   })
 
   describe('custom mode — all features selected', () => {
-    it('removes hygiene files plus .install-files', async () => {
+    it('removes the repository metadata plus .install-files', async () => {
       await cleanupFiles('evm', '/project/my_app', 'custom', ALL_EVM_FEATURES)
 
       const paths = getRmPaths()
@@ -420,7 +379,7 @@ describe('cleanupFiles — evm', () => {
   })
 
   describe('onProgress callback', () => {
-    it('reports the hygiene and install-script steps for full mode', async () => {
+    it('reports the prepare and install-script steps for full mode', async () => {
       const steps: string[] = []
       await cleanupFiles('evm', '/project/my_app', 'full', [], (step) => steps.push(step))
 
@@ -466,187 +425,106 @@ describe('cleanupFiles — canton', () => {
     mockCantonPackageJson()
   })
 
-  describe('full mode (keep everything)', () => {
-    it('keeps .github, pre-commit files, carpincho-wallet, and agent metadata', async () => {
-      await cleanupFiles('canton', '/project/my_app', 'full')
+  it('removes every path the stack lists, libraries and repo tooling alike', async () => {
+    await cleanupFiles('canton', '/project/my_app', 'full')
 
-      const paths = getRmPaths()
-      expect(paths).not.toContain(resolve('/project/my_app', '.github'))
-      expect(paths).not.toContain(resolve('/project/my_app', '.husky'))
-      expect(paths).not.toContain(resolve('/project/my_app', '.lintstagedrc.mjs'))
-      expect(paths).not.toContain(resolve('/project/my_app', 'commitlint.config.js'))
-      expect(paths).not.toContain(resolve('/project/my_app', 'carpincho-wallet'))
-      expect(paths).not.toContain(resolve('/project/my_app', '.claude'))
-    })
+    const paths = getRmPaths()
+    for (const relativePath of stackDefinitions.canton.prepare.paths) {
+      expect(paths).toContain(resolve('/project/my_app', relativePath))
+    }
   })
 
-  describe('default mode (drop github + precommit, keep the rest)', () => {
-    it('removes .github and the pre-commit files but keeps carpincho-wallet and agent metadata', async () => {
-      await cleanupFiles('canton', '/project/my_app', 'default', ['carpincho', 'llm'])
+  it('deletes the lockfile, so the install resolves the libraries from npm', async () => {
+    await cleanupFiles('canton', '/project/my_app', 'full')
 
-      const paths = getRmPaths()
-      expect(paths).toContain(resolve('/project/my_app', '.github'))
-      expect(paths).toContain(resolve('/project/my_app', '.husky'))
-      expect(paths).toContain(resolve('/project/my_app', '.lintstagedrc.mjs'))
-      expect(paths).toContain(resolve('/project/my_app', 'commitlint.config.js'))
-      expect(paths).not.toContain(resolve('/project/my_app', 'carpincho-wallet'))
-      expect(paths).not.toContain(resolve('/project/my_app', '.claude'))
-    })
-
-    it('strips the prepare script and leaves the dependencies to the package manager', async () => {
-      await cleanupFiles('canton', '/project/my_app', 'default', ['carpincho', 'llm'])
-
-      const pkg = getWrittenPackageJson()
-      const scripts = pkg.scripts as Record<string, unknown>
-      const devDeps = pkg.devDependencies as Record<string, unknown>
-      expect(scripts.prepare).toBeUndefined()
-      expect(devDeps.husky).toBe('^9.1.7')
-      expect(scripts['wallet:dev']).toBe('npm --prefix carpincho-wallet run dev')
-    })
+    expect(getRmPaths()).toContain(resolve('/project/my_app', 'pnpm-lock.yaml'))
   })
 
-  describe('custom mode — keep github, drop precommit', () => {
-    it('keeps .github but removes the pre-commit files and the prepare script', async () => {
-      await cleanupFiles('canton', '/project/my_app', 'custom', ['github', 'carpincho', 'llm'])
+  it('keeps the hygiene tooling and the deployment example the project still wants', async () => {
+    await cleanupFiles('canton', '/project/my_app', 'full')
 
-      const paths = getRmPaths()
-      expect(paths).not.toContain(resolve('/project/my_app', '.github'))
-      expect(paths).toContain(resolve('/project/my_app', '.husky'))
-
-      const scripts = getWrittenPackageJson().scripts as Record<string, unknown>
-      expect(scripts.prepare).toBeUndefined()
-    })
+    const paths = getRmPaths()
+    for (const kept of [
+      'biome.json',
+      'knip.json',
+      'commitlint.config.js',
+      '.husky',
+      'README.md',
+      'scripts',
+      'dapp/daml',
+      'dapp/frontend/vercel.json',
+    ]) {
+      expect(paths).not.toContain(resolve('/project/my_app', kept))
+    }
   })
 
-  describe('custom mode — keep precommit', () => {
-    it('keeps the husky files, prepare script, and deps', async () => {
-      await cleanupFiles('canton', '/project/my_app', 'custom', ['precommit', 'carpincho', 'llm'])
+  it('removes the scripts that run the deleted kit folder', async () => {
+    await cleanupFiles('canton', '/project/my_app', 'full')
 
-      const paths = getRmPaths()
-      expect(paths).not.toContain(resolve('/project/my_app', '.husky'))
-      expect(paths).toContain(resolve('/project/my_app', '.github'))
-      expect(writeFileSync).not.toHaveBeenCalled()
-    })
+    const scripts = getWrittenPackageJson().scripts as Record<string, unknown>
+    for (const name of [
+      'check:anatomy',
+      'check:versions',
+      'docs:build',
+      'docs:check',
+      'release:version',
+    ]) {
+      expect(scripts[name]).toBeUndefined()
+    }
   })
 
-  describe('custom mode — carpincho deselected', () => {
-    it('removes carpincho-wallet and strips its scripts', async () => {
-      await cleanupFiles('canton', '/project/my_app', 'custom', ['github', 'precommit', 'llm'])
+  it('removes the declared scripts that no deleted path names', async () => {
+    await cleanupFiles('canton', '/project/my_app', 'full')
 
-      expect(getRmPaths()).toContain(resolve('/project/my_app', 'carpincho-wallet'))
-      const scripts = getWrittenPackageJson().scripts as Record<string, unknown>
-      expect(scripts['wallet:dev']).toBeUndefined()
-      expect(scripts['carpincho:build:extension']).toBeUndefined()
-    })
-
-    it('prunes carpincho-wallet from the workspaces array but keeps the rest', async () => {
-      await cleanupFiles('canton', '/project/my_app', 'custom', ['github', 'precommit', 'llm'])
-
-      const workspaces = getWorkspacePackages(getWrittenPackageJson())
-      expect(workspaces).not.toContain('carpincho-wallet')
-      expect(workspaces).toContain('canton-barebones')
-      expect(workspaces).toContain('dapp/frontend')
-    })
-
-    it('leaves no workspace entry pointing at a removed directory, whichever feature went', async () => {
-      const selected: FeatureName[] = ['github', 'precommit', 'llm']
-      await cleanupFiles('canton', '/project/my_app', 'custom', selected)
-
-      const removedDirs = removedCantonDirs(selected)
-      const workspaces = getWorkspacePackages(getWrittenPackageJson())
-      for (const entry of workspaces) {
-        expect(entryTargetsRemovedDir(entry, removedDirs)).toBe(false)
-      }
-      expect(workspaces.length).toBeGreaterThan(0)
-    })
-
-    it('prunes the { packages } object form and preserves sibling keys', async () => {
-      mockCantonPackageJson({ packages: CANTON_WORKSPACES, nohoist: ['**/react'] })
-      await cleanupFiles('canton', '/project/my_app', 'custom', ['github', 'precommit', 'llm'])
-
-      const written = getWrittenPackageJson()
-      expect(Array.isArray(written.workspaces)).toBe(false)
-      const workspaces = written.workspaces as { packages: string[]; nohoist: string[] }
-      expect(workspaces.packages).not.toContain('carpincho-wallet')
-      expect(workspaces.packages).toContain('dapp/frontend')
-      expect(workspaces.nohoist).toEqual(['**/react'])
-    })
+    const scripts = getWrittenPackageJson().scripts as Record<string, unknown>
+    for (const name of stackDefinitions.canton.prepare.scripts) {
+      expect(scripts[name]).toBeUndefined()
+    }
   })
 
-  describe('custom mode — llm deselected', () => {
-    it('removes agent metadata and llm artifact paths', async () => {
-      await cleanupFiles('canton', '/project/my_app', 'custom', [
-        'github',
-        'precommit',
-        'carpincho',
-      ])
+  it('keeps the scripts the project still needs', async () => {
+    await cleanupFiles('canton', '/project/my_app', 'full')
 
-      const paths = getRmPaths()
-      expect(paths).toContain(resolve('/project/my_app', '.claude'))
-      expect(paths).toContain(resolve('/project/my_app', 'AGENTS.md'))
-      expect(paths).toContain(resolve('/project/my_app', 'architecture.md'))
-      expect(paths).toContain(resolve('/project/my_app', 'llms.txt'))
-    })
-
-    it('leaves package.json untouched, since none of its paths are workspaces or scripts', async () => {
-      await cleanupFiles('canton', '/project/my_app', 'custom', [
-        'github',
-        'precommit',
-        'carpincho',
-      ])
-
-      expect(writeFileSync).not.toHaveBeenCalled()
-    })
+    const scripts = getWrittenPackageJson().scripts as Record<string, unknown>
+    expect(scripts.lint).toBe('biome check --error-on-warnings')
+    expect(scripts.knip).toBe('knip')
+    expect(scripts.prepare).toBe('husky')
+    expect(scripts['app:dev']).toBe('pnpm -C dapp/frontend run dev')
   })
 
-  describe('onProgress callback', () => {
-    it('reports nothing for full mode: canton applies no forced hygiene', async () => {
-      const steps: string[] = []
-      await cleanupFiles('canton', '/project/my_app', 'full', [], (step) => steps.push(step))
+  it('removes the dev-dependencies that only served the deleted tooling', async () => {
+    await cleanupFiles('canton', '/project/my_app', 'full')
 
-      expect(steps).toEqual([])
-    })
-
-    it('reports the github and pre-commit removals for default mode', async () => {
-      const steps: string[] = []
-      await cleanupFiles('canton', '/project/my_app', 'default', ['carpincho', 'llm'], (step) =>
-        steps.push(step),
-      )
-
-      expect(steps).toEqual(['GitHub templates & workflows', 'Pre-commit hooks'])
-    })
-
-    it('reports every feature removal when nothing is selected', async () => {
-      const steps: string[] = []
-      await cleanupFiles('canton', '/project/my_app', 'custom', [], (step) => steps.push(step))
-
-      expect(steps).toEqual([
-        'GitHub templates & workflows',
-        'Pre-commit hooks',
-        'Carpincho wallet',
-        'LLM & agent artifacts',
-      ])
-    })
+    const devDeps = getWrittenPackageJson().devDependencies as Record<string, unknown>
+    for (const name of stackDefinitions.canton.prepare.devDependencies) {
+      expect(devDeps[name]).toBeUndefined()
+    }
+    expect(devDeps.knip).toBe('6.33.0')
+    expect(devDeps.husky).toBe('^9.1.7')
   })
 
-  describe('scripts that only mention a removed file', () => {
-    it('keeps them, because only removed directories strip scripts', async () => {
-      vi.mocked(readFileSync).mockReturnValue(
-        JSON.stringify({
-          scripts: {
-            'lint:docs': 'markdownlint CLAUDE.md',
-            context: 'node scripts/gen.js llms',
-            'wallet:dev': 'npm --prefix carpincho-wallet run dev',
-          },
-        }),
-      )
+  it('never restores a staged file: the stack ships no staging directory', async () => {
+    await cleanupFiles('canton', '/project/my_app', 'full')
 
-      await cleanupFiles('canton', '/project/my_app', 'custom', ['github', 'precommit'])
+    expect(copyFile).not.toHaveBeenCalled()
+    expect(mkdir).not.toHaveBeenCalled()
+  })
 
-      const scripts = getWrittenPackageJson().scripts as Record<string, unknown>
-      expect(scripts['lint:docs']).toBe('markdownlint CLAUDE.md')
-      expect(scripts.context).toBe('node scripts/gen.js llms')
-      expect(scripts['wallet:dev']).toBeUndefined()
-    })
+  it('has no features, so the mode changes nothing', async () => {
+    await cleanupFiles('canton', '/project/my_app', 'custom', [])
+    const custom = getRmPaths()
+
+    vi.clearAllMocks()
+    mockCantonPackageJson()
+
+    await cleanupFiles('canton', '/project/my_app', 'full')
+    expect(getRmPaths()).toEqual(custom)
+  })
+
+  it('reports one progress step, since there are no features to report', async () => {
+    const steps: string[] = []
+    await cleanupFiles('canton', '/project/my_app', 'full', [], (step) => steps.push(step))
+
+    expect(steps).toEqual([stackDefinitions.canton.prepare.label])
   })
 })

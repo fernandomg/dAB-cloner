@@ -5,7 +5,7 @@ import {
   getFeatureNames,
   stackDefinitions,
   stackNames,
-} from '../constants/config.js'
+} from '../stacks/index.js'
 import {
   applyFeatureToggle,
   deriveStepDisplay,
@@ -14,12 +14,12 @@ import {
   getPostInstallMessages,
   isFeatureSelected,
   isValidName,
+  meetsNodeVersion,
   resolveModeFeatures,
   resolveSelectedFeatures,
 } from '../utils/utils.js'
 
 const evmFeatures = stackDefinitions.evm.features
-const cantonFeatures = stackDefinitions.canton.features
 
 describe('isValidName', () => {
   it('accepts alphanumeric names', () => {
@@ -38,8 +38,15 @@ describe('isValidName', () => {
     expect(isValidName('my app')).toBe(false)
   })
 
-  it('rejects hyphens', () => {
-    expect(isValidName('my-app')).toBe(false)
+  it('accepts dashes, except to start', () => {
+    expect(isValidName('my-app')).toBe(true)
+    expect(isValidName('trailing-')).toBe(true)
+    expect(isValidName('-leading')).toBe(false)
+  })
+
+  it('rejects a name git would read as an option', () => {
+    expect(isValidName('--upload-pack=touch_pwned')).toBe(false)
+    expect(isValidName('-rf')).toBe(false)
   })
 
   it('rejects dots', () => {
@@ -103,13 +110,29 @@ describe('getPackagesToRemove — evm', () => {
 })
 
 describe('getPackagesToRemove — canton', () => {
-  it('returns empty when all canton features selected', () => {
-    const allFeatures = getFeatureNames('canton')
-    expect(getPackagesToRemove('canton', allFeatures)).toEqual([])
+  it('returns empty: the stack has no features, so nothing is optional', () => {
+    expect(getPackagesToRemove('canton', [])).toEqual([])
+  })
+})
+
+describe('meetsNodeVersion', () => {
+  it('accepts the exact version', () => {
+    expect(meetsNodeVersion('24.15.0', '24.15.0')).toBe(true)
   })
 
-  it('returns the pre-commit packages when that feature is dropped', () => {
-    expect(getPackagesToRemove('canton', [])).toEqual(cantonFeatures.precommit.packages)
+  it('accepts a newer minor or patch', () => {
+    expect(meetsNodeVersion('24.15.0', '24.20.0')).toBe(true)
+    expect(meetsNodeVersion('24.15.0', '24.15.3')).toBe(true)
+  })
+
+  it('accepts a newer major even with a lower minor', () => {
+    expect(meetsNodeVersion('24.15.0', '25.0.0')).toBe(true)
+  })
+
+  it('rejects an older major, minor, or patch', () => {
+    expect(meetsNodeVersion('24.15.0', '22.20.0')).toBe(false)
+    expect(meetsNodeVersion('24.15.0', '24.14.9')).toBe(false)
+    expect(meetsNodeVersion('24.15.1', '24.15.0')).toBe(false)
   })
 })
 
@@ -139,38 +162,10 @@ describe('getPostInstallMessages', () => {
     expect(result).toEqual([])
   })
 
-  it('leads canton guidance with the stack-level steps, then the kept features', () => {
-    const result = getPostInstallMessages('canton', getFeatureNames('canton'))
+  it('returns the canton stack-level guidance, which no feature adds to', () => {
+    const result = getPostInstallMessages('canton', [])
 
-    expect(result).toEqual([
-      ...(stackDefinitions.canton.postInstall ?? []),
-      ...(cantonFeatures.carpincho.postInstall ?? []),
-    ])
-  })
-
-  it('returns the stack-level guidance for the recommended canton plan', () => {
-    const result = getPostInstallMessages('canton', resolveModeFeatures('canton', 'default'))
-
-    expect(result).toEqual([
-      ...(stackDefinitions.canton.postInstall ?? []),
-      ...(cantonFeatures.carpincho.postInstall ?? []),
-    ])
-  })
-
-  it('returns only stack-level guidance for a plan without carpincho', () => {
-    const result = getPostInstallMessages('canton', ['llm'])
-
-    expect(result).toEqual(stackDefinitions.canton.postInstall ?? [])
-  })
-})
-
-describe('resolveSelectedFeatures — canton (no requires)', () => {
-  it('returns the selection unchanged, in config order', () => {
-    expect(resolveSelectedFeatures('canton', ['llm', 'carpincho'])).toEqual(['carpincho', 'llm'])
-  })
-
-  it('leaves a single-feature selection unchanged', () => {
-    expect(resolveSelectedFeatures('canton', ['github'])).toEqual(['github'])
+    expect(result).toEqual(stackDefinitions.canton.postInstall)
   })
 })
 
@@ -181,40 +176,48 @@ describe('resolveSelectedFeatures — evm (no requires)', () => {
 })
 
 describe('describeInstallPlan', () => {
-  it('summarises a full-mode canton plan as all features', () => {
-    expect(describeInstallPlan('canton', 'my_app', 'full', [])).toBe(
-      'Stack: Canton · Project: my_app · Mode: full (all features)',
-    )
+  it('returns one labelled setting per line, naming the mode as the selector did', () => {
+    expect(describeInstallPlan('evm', 'my_app', 'full', [])).toEqual([
+      { label: 'Stack', value: 'EVM' },
+      { label: 'Project', value: 'my_app' },
+      { label: 'Mode', value: 'Full' },
+    ])
+  })
+
+  it('names the default mode as the selector did', () => {
+    expect(describeInstallPlan('evm', 'my_app', 'default', [])).toEqual([
+      { label: 'Stack', value: 'EVM' },
+      { label: 'Project', value: 'my_app' },
+      { label: 'Mode', value: 'Default (recommended)' },
+    ])
   })
 
   it('lists the selected features for a custom-mode plan', () => {
-    expect(describeInstallPlan('canton', 'my_app', 'custom', ['github', 'carpincho'])).toBe(
-      'Stack: Canton · Project: my_app · Mode: custom · Features: github, carpincho',
-    )
+    expect(describeInstallPlan('evm', 'my_app', 'custom', ['demo', 'subgraph'])).toEqual([
+      { label: 'Stack', value: 'EVM' },
+      { label: 'Project', value: 'my_app' },
+      { label: 'Mode', value: 'Custom' },
+      { label: 'Features', value: 'demo, subgraph' },
+    ])
   })
 
   it('shows "none" when a custom plan selects no features', () => {
-    expect(describeInstallPlan('evm', 'demo_app', 'custom', [])).toBe(
-      'Stack: EVM · Project: demo_app · Mode: custom · Features: none',
-    )
-  })
-})
-
-describe('describeInstallPlan — default mode', () => {
-  it('summarises a default-mode plan as recommended', () => {
-    expect(describeInstallPlan('canton', 'my_app', 'default', [])).toBe(
-      'Stack: Canton · Project: my_app · Mode: default (recommended)',
-    )
+    expect(describeInstallPlan('evm', 'demo_app', 'custom', [])).toEqual([
+      { label: 'Stack', value: 'EVM' },
+      { label: 'Project', value: 'demo_app' },
+      { label: 'Mode', value: 'Custom' },
+      { label: 'Features', value: 'none' },
+    ])
   })
 })
 
 describe('resolveModeFeatures', () => {
   it('returns all features for full mode', () => {
-    expect(resolveModeFeatures('canton', 'full')).toEqual(getFeatureNames('canton'))
+    expect(resolveModeFeatures('evm', 'full')).toEqual(getFeatureNames('evm'))
   })
 
   it('returns the default:true set for default mode', () => {
-    expect(resolveModeFeatures('canton', 'default')).toEqual(getDefaultFeatureNames('canton'))
+    expect(resolveModeFeatures('evm', 'default')).toEqual(getDefaultFeatureNames('evm'))
   })
 
   it('resolves requires for default mode too, not only for custom', () => {
@@ -225,25 +228,21 @@ describe('resolveModeFeatures', () => {
     }
   })
 
-  it('resolves the custom selection (no requires today, so identity in config order)', () => {
-    expect(resolveModeFeatures('canton', 'custom', ['llm', 'carpincho'])).toEqual(
-      resolveSelectedFeatures('canton', ['llm', 'carpincho']),
-    )
+  it('returns nothing for a stack with no features, whatever the mode', () => {
+    expect(resolveModeFeatures('canton', 'full')).toEqual([])
+    expect(resolveModeFeatures('canton', 'custom', [])).toEqual([])
   })
 })
 
-describe('applyFeatureToggle — canton (no dependencies)', () => {
+describe('applyFeatureToggle — evm (no dependencies)', () => {
   it('selecting a feature adds it in config order', () => {
-    expect(applyFeatureToggle('canton', ['carpincho'], 'github', 'select')).toEqual([
-      'github',
-      'carpincho',
-    ])
+    expect(applyFeatureToggle('evm', ['subgraph'], 'demo', 'select')).toEqual(['demo', 'subgraph'])
   })
 
   it('unselecting a feature removes only that feature', () => {
-    expect(
-      applyFeatureToggle('canton', ['github', 'carpincho', 'llm'], 'carpincho', 'unselect'),
-    ).toEqual(['github', 'llm'])
+    expect(applyFeatureToggle('evm', ['demo', 'subgraph', 'vocs'], 'subgraph', 'unselect')).toEqual(
+      ['demo', 'vocs'],
+    )
   })
 })
 

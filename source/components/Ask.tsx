@@ -1,6 +1,6 @@
 import { Box, Text } from 'ink'
 import TextInput from 'ink-text-input'
-import { type FC, useMemo, useState } from 'react'
+import { type FC, type ReactNode, useMemo, useState } from 'react'
 import { isAnswerConfirmed } from '../utils/utils.js'
 
 interface Props {
@@ -8,7 +8,7 @@ interface Props {
   errorMessage?: string
   onSubmit: (value: string) => void
   question: string
-  tip?: string
+  tip?: ReactNode
   placeholder?: string
 }
 

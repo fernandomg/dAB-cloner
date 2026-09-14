@@ -2,7 +2,8 @@ import figures from 'figures'
 import { Text } from 'ink'
 import SelectInput from 'ink-select-input'
 import { type FC, useState } from 'react'
-import { type Stack, stackDefinitions, stackNames } from '../../constants/config.js'
+import { stackDefinitions, stackNames } from '../../stacks/index.js'
+import type { Stack } from '../../types/types.js'
 import Divider from '../Divider.js'
 
 interface Props {

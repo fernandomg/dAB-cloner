@@ -1,7 +1,6 @@
 import { type FC, useCallback, useMemo } from 'react'
-import type { FeatureName, Stack } from '../../constants/config.js'
 import { cleanupFiles } from '../../operations/index.js'
-import type { InstallationType } from '../../types/types.js'
+import type { FeatureName, InstallationType, Stack } from '../../types/types.js'
 import { getProjectFolder } from '../../utils/utils.js'
 import StepProgress from './StepProgress.js'
 

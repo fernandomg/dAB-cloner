@@ -1,15 +1,5 @@
 import process from 'node:process'
 import {
-  type FeatureName,
-  getFeatureNames,
-  getInstallationModes,
-  getStackConfig,
-  isFeatureNameValid,
-  isStackName,
-  type Stack,
-  stackNames,
-} from './constants/config.js'
-import {
   cleanupFiles,
   cloneRepo,
   createEnvFile,
@@ -17,7 +7,15 @@ import {
   installPackages,
 } from './operations/index.js'
 import { beginInstall, completeInstall } from './operations/installGuard.js'
-import type { InstallationType } from './types/types.js'
+import {
+  getFeatureNames,
+  getInstallationModes,
+  getStackConfig,
+  isFeatureNameValid,
+  isStackName,
+  stackNames,
+} from './stacks/index.js'
+import type { FeatureName, InstallationType, Stack } from './types/types.js'
 import {
   getPostInstallMessages,
   getProjectFolder,
@@ -75,37 +73,31 @@ function parseFeatures(featuresFlag: string | undefined): string[] {
     })
 }
 
-function validate(flags: { stack?: string; name?: string; mode?: string; features?: string }): {
-  stack: Stack
-  name: string
-  mode: InstallationType
-  features: FeatureName[]
-} {
-  const stackFlag = flags.stack ?? 'evm'
+/** The mode and features the flags ask for, once the stack is known to be valid. */
+function resolveModeAndFeatures(
+  stack: Stack,
+  flags: { mode?: string; features?: string },
+): { mode: InstallationType; features: FeatureName[] } {
+  const modes = getInstallationModes(stack)
 
-  if (!isStackName(stackFlag)) {
-    fail(`Invalid stack: '${stackFlag}'. Valid stacks: ${stackNames.join(', ')}`)
-  }
+  // A stack with no features has nothing to choose, so both flags are a mistake worth naming.
+  if (modes.length === 0) {
+    for (const flag of ['mode', 'features'] as const) {
+      if (flags[flag]) {
+        fail(`The ${stack} stack has no optional features, so --${flag} is not accepted`)
+      }
+    }
 
-  const stack = stackFlag
-
-  if (!flags.name) {
-    fail('Missing required flag: --name')
+    return { mode: 'full', features: [] }
   }
 
   if (!flags.mode) {
     fail('Missing required flag: --mode')
   }
 
-  if (!isValidName(flags.name)) {
-    fail('Invalid project name: only letters, numbers, and underscores are allowed')
-  }
-
   if (flags.mode !== 'full' && flags.mode !== 'default' && flags.mode !== 'custom') {
     fail("Invalid mode: must be 'full', 'default', or 'custom'")
   }
-
-  const modes = getInstallationModes(stack)
 
   if (!modes.includes(flags.mode)) {
     fail(
@@ -113,17 +105,8 @@ function validate(flags: { stack?: string; name?: string; mode?: string; feature
     )
   }
 
-  if (flags.mode === 'full' || flags.mode === 'default') {
-    if (projectDirectoryExists(flags.name)) {
-      fail(`Project directory '${flags.name}' already exists`)
-    }
-
-    return {
-      stack,
-      name: flags.name,
-      mode: flags.mode,
-      features: resolveModeFeatures(stack, flags.mode),
-    }
+  if (flags.mode !== 'custom') {
+    return { mode: flags.mode, features: resolveModeFeatures(stack, flags.mode) }
   }
 
   if (!flags.features) {
@@ -154,16 +137,40 @@ function validate(flags: { stack?: string; name?: string; mode?: string; feature
     )
   }
 
+  return { mode: 'custom', features: resolveModeFeatures(stack, 'custom', features) }
+}
+
+function validate(flags: { stack?: string; name?: string; mode?: string; features?: string }): {
+  stack: Stack
+  name: string
+  mode: InstallationType
+  features: FeatureName[]
+} {
+  const stackFlag = flags.stack ?? 'evm'
+
+  if (!isStackName(stackFlag)) {
+    fail(`Invalid stack: '${stackFlag}'. Valid stacks: ${stackNames.join(', ')}`)
+  }
+
+  const stack = stackFlag
+
+  if (!flags.name) {
+    fail('Missing required flag: --name')
+  }
+
+  if (!isValidName(flags.name)) {
+    fail(
+      'Invalid project name: only letters, numbers, underscores and non-initial dashes are allowed',
+    )
+  }
+
+  const { mode, features } = resolveModeAndFeatures(stack, flags)
+
   if (projectDirectoryExists(flags.name)) {
     fail(`Project directory '${flags.name}' already exists`)
   }
 
-  return {
-    stack,
-    name: flags.name,
-    mode: flags.mode,
-    features: resolveModeFeatures(stack, 'custom', features),
-  }
+  return { stack, name: flags.name, mode, features }
 }
 
 export async function runNonInteractive(flags: {
@@ -181,7 +188,7 @@ export async function runNonInteractive(flags: {
 
     await cloneRepo(stack, name)
     await cleanupFiles(stack, projectFolder, mode, features)
-    await createEnvFile(stack, projectFolder, features)
+    await createEnvFile(stack, projectFolder)
     await installPackages(stack, projectFolder, mode, features)
 
     if (getStackConfig(stack).initialCommit) {

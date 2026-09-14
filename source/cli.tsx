@@ -1,9 +1,10 @@
 #!/usr/bin/env node
 import process from 'node:process'
 import meow from 'meow'
-import { isStackName, type Stack, stackNames } from './constants/config.js'
 import { getInfoOutput } from './info.js'
 import { ReportedError, reportFailure, runNonInteractive } from './nonInteractive.js'
+import { isStackName, stackNames } from './stacks/index.js'
+import type { Stack } from './types/types.js'
 
 const cli = meow(
   `
@@ -11,13 +12,14 @@ const cli = meow(
     $ dappbooster [options]
 
   Stack selection (mutually exclusive)
-    --canton                 Use the Canton stack (Daml, Carpincho wallet, off-chain services)
+    --canton                 Use the Canton stack (Daml ledger, off-chain services)
     --evm                    Use the EVM stack (Ethereum, Polygon, Base, …) [default]
     --stack <evm|canton>     Explicit stack name (alternative to --canton/--evm)
 
   Common options
-    --name <string>          Project name (alphanumeric, underscores)
-    --mode <full|default|custom>  Installation mode (default mode is Canton-only)
+    --name <string>          Project name (alphanumeric, underscores, dashes)
+    --mode <full|custom>     Installation mode (EVM only; Canton takes neither
+                             --mode nor --features)
     --features <list>        Comma-separated features (with --mode=custom)
                                EVM:
                                  demo       Component demos and example pages
@@ -25,37 +27,29 @@ const cli = meow(
                                  typedoc    TypeDoc API documentation
                                  vocs       Vocs documentation site
                                  husky      Git hooks (Husky, lint-staged, commitlint)
-                               Canton:
-                                 github     GitHub issue/PR templates and workflows
-                                 precommit  Pre-commit hooks (Husky, lint-staged, commitlint)
-                                 carpincho  Carpincho browser-extension wallet
-                                 llm        LLM and agent artifacts (.claude, AGENTS.md, …)
-                               Canton's default mode keeps carpincho + llm and removes
-                               github + precommit; full keeps everything; custom lets you
-                               pick (github + precommit start unchecked).
     --non-interactive, --ni  Run without prompts (auto-enabled when not a TTY)
     --info                   Output feature metadata as JSON (filter with --stack)
     --help                   Show this help
     --version                Show version
 
   Non-interactive mode
-    Requires --name and --mode. Outputs JSON to stdout.
-    Activates automatically when stdout is not a TTY.
+    Requires --name, and --mode for a stack that has features.
+    Outputs JSON to stdout. Activates automatically when stdout is not a TTY.
     Use --ni to force non-interactive mode in a TTY environment.
 
     AI agents: non-interactive mode activates automatically. Run --info
     to discover available stacks and features (including each feature's
-    "requires"), then pass --canton or --evm plus --name and --mode flags.
-    Feature dependencies are resolved automatically, so the returned
-    "features" list may include extras pulled in by your selection.
-    Output is JSON for easy parsing.
+    "requires"), then pass --canton or --evm plus --name, and --mode when
+    the stack lists modes. Feature dependencies are resolved automatically,
+    so the returned "features" list may include extras pulled in by your
+    selection. Output is JSON for easy parsing.
 
   Examples
     Interactive (prompts for stack and options):
       $ dappbooster
 
-    Canton stack, recommended install (non-interactive):
-      $ dappbooster --canton --ni --name my_dapp --mode default
+    Canton stack (non-interactive):
+      $ dappbooster --canton --ni --name my_dapp
 
     EVM stack, custom install:
       $ dappbooster --evm --ni --name my_dapp --mode custom --features demo,subgraph
