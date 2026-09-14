@@ -102,6 +102,20 @@ describe('cloneRepo — evm (tag-latest)', () => {
     expect(meetsNodeVersion).not.toHaveBeenCalled()
   })
 
+  it('checks the package manager is on PATH before cloning', async () => {
+    await cloneRepo('evm', 'my_app')
+
+    const calls = vi.mocked(execFile).mock.calls
+    expect(calls[0]).toEqual([stackDefinitions.evm.packageManager, ['--version']])
+  })
+
+  it('fails with a plain message when the package manager is missing', async () => {
+    vi.mocked(execFile).mockRejectedValueOnce(new Error('spawn pnpm ENOENT'))
+
+    await expect(cloneRepo('evm', 'my_app')).rejects.toThrow(/pnpm was not found/)
+    expect(execFile).toHaveBeenCalledTimes(1)
+  })
+
   it('works without a callback', async () => {
     await expect(cloneRepo('evm', 'my_app')).resolves.toBeUndefined()
   })

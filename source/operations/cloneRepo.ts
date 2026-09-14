@@ -26,6 +26,15 @@ export async function cloneRepo(
     )
   }
 
+  // The installer runs this a few steps later. Checking now saves a clone that cannot be used.
+  try {
+    await execFile(config.packageManager, ['--version'])
+  } catch {
+    throw new Error(
+      `${config.packageManager} was not found. Install it, then run the installer again.`,
+    )
+  }
+
   if (config.ref) {
     // Fetching the ref by name keeps the clone shallow. It works for a tag or a branch.
     onProgress?.(`Cloning ${config.label} (${config.ref}) in ${projectName}`)
